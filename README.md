@@ -32,32 +32,35 @@ This code enforces an explicit PWM ownership lock so:
 sudo apt update
 sudo apt install -y python3-pip python3-pil
 ```
-2) install python deps:
-```pip3 install flask pillow```
+2) Install Python deps:
+```bash
+pip3 install flask pillow
+```
 
-Notes:
+## Notes
 
 RPi.GPIO is typically preinstalled on Raspberry Pi OS.
 
 Wi-Fi scanning via iw dev wlan0 scan usually requires root.
 
-Wiring Notes
+## Wiring Notes
 
 HC-SR04 ECHO must go through a voltage divider to 3.3V before connecting to GPIO24.
 
 TB6612FNG requires proper VM motor supply and common ground with Raspberry Pi.
 
-Running
+## Running
 
 Always run with sudo for Wi-Fi scanning stability:
 
+```bash
 sudo python3 main.py
-
+```
 
 Open:
 http://<pi-ip>:5000
 
-Troubleshooting
+## Troubleshooting
 
 If motors do not move:
 
@@ -81,49 +84,41 @@ Ensure iw is available: which iw
 
 Run as sudo
 
-File Layout
+## File Layout
 
-config.py
+- config.py
+- controllers/motors.py
+- sensing/sonar.py
+- mapping/occupancy_grid.py
+- signals/wifi_scan.py
+- ui/webapp.py
+- main.py
+- static/map.png (generated at runtime)
 
-controllers/motors.py
-
-sensing/sonar.py
-
-mapping/occupancy_grid.py
-
-signals/wifi_scan.py
-
-ui/webapp.py
-
-main.py
-
-static/map.png (generated at runtime)
-
-Safety
+## Safety
 
 Forward motion is blocked when the latest scan indicates an obstacle <= FRONT_STOP_CM in the forward sector (angles 80..100).
 
 Manual commands disable autonomous mode to prevent PWM contention on GPIO12.
 
-
 ---
 
-# How to run and test in order
+## How to Run and Test in Order
 
 1) **Motor test**
 ```bash
 sudo python3 main.py --motor-test
+```
 
-
-Sonar scan test
-
+2) **Sonar scan test**
+```bash
 sudo python3 main.py --sonar-test
+```
 
-
-3. Run main dashboard
-
+3) **Run main dashboard**
+```bash
 sudo python3 main.py
-
+```
 
 Open:
 http://<pi-ip>:5000
