@@ -34,7 +34,19 @@ MAP_IMAGE_PATH = os.path.join(STATIC_DIR, "map.png")
 # ----------------------------
 # Motor control
 # ----------------------------
-DEFAULT_SPEED_PCT = 60  # percent 0..100
+# Motor wiring/logic correction
+# If your rover's "forward" command moves sideways, your left/right channels are likely swapped.
+MOTORS_SWAP_SIDES = True   # set True if forward->right and back->left, etc.
+
+# If forward/back are reversed on a given side, invert that side.
+LEFT_DIR_INVERT = False
+RIGHT_DIR_INVERT = False
+# Motor trim (calibration) to correct drift
+# Multiply requested speed by these factors (0.0..1.2 typical).
+LEFT_SPEED_TRIM = 1.00
+RIGHT_SPEED_TRIM = 1.00
+
+DEFAULT_SPEED_PCT = 10  # percent 0..100
 MOTOR_PWM_HZ = 1000
 
 # Obstacle safety

@@ -130,10 +130,93 @@ class Motors:
             self._apply_speed_locked(speed, speed)
 
     def _apply_speed_locked(self, left_pct: int, right_pct: int):
+        # Apply trim factors (calibration)
+        left = float(left_pct) * float(getattr(config, "LEFT_SPEED_TRIM", 1.0))
+        right = float(right_pct) * float(getattr(config, "RIGHT_SPEED_TRIM", 1.0))
+
+        # Clamp 0..100
+        left = max(0.0, min(100.0, left))
+        right = max(0.0, min(100.0, right))
+
         if self._pwm_a is not None:
-            self._pwm_a.ChangeDutyCycle(float(left_pct))
+            self._pwm_a.ChangeDutyCycle(left)
         if self._pwm_b is not None:
-            self._pwm_b.ChangeDutyCycle(float(right_pct))
+            self._pwm_b.ChangeDutyCycle(right)
+
+    def _logical_to_physical(self, left_in1: int, left_in2: int, right_in1: int, right_in2: int):
+        """
+        Takes desired LEFT/RIGHT direction pins (logical rover frame),
+        applies optional inversion and side swapping, and returns
+        (AIN1, AIN2, BIN1, BIN2) to drive the physical TB6612 channels.
+        """
+        # Apply direction inversion (swap IN1/IN2) per side if needed
+        if getattr(config, "LEFT_DIR_INVERT", False):
+            left_in1, left_in2 = left_in2, left_in1
+        if getattr(config, "RIGHT_DIR_INVERT", False):
+            right_in1, right_in2 = right_in2, right_in1
+
+        # Swap sides if the physical left/right are wired opposite
+        if getattr(config, "MOTORS_SWAP_SIDES", False):
+            # logical left drives physical right (B), logical right drives physical left (A)
+            ain1, ain2 = right_in1, right_in2
+            bin1, bin2 = left_in1, left_in2
+        else:
+            # logical left -> physical left (A), logical right -> physical right (B)
+            ain1, ain2 = left_in1, left_in2
+            bin1, bin2 = right_in1, right_in2
+
+        return ain1, ain2, bin1, bin2
+
+    def _set_dirs(self, left_in1: int, left_in2: int, right_in1: int, right_in2: int):
+        """
+        Public helper: set logical rover LEFT/RIGHT, then map to physical pins.
+        """
+        ain1, ain2, bin1, bin2 = self._logical_to_physical(left_in1, left_in2, right_in1, right_in2)
+
+        GPIO.output(config.LEFT_AIN1_GPIO, GPIO.HIGH if ain1 else GPIO.LOW)
+        GPIO.output(config.LEFT_AIN2_GPIO, GPIO.HIGH if ain2 else GPIO.LOW)
+        GPIO.output(config.RIGHT_BIN1_GPIO, GPIO.HIGH if bin1 else GPIO.LOW)
+        GPIO.output(config.RIGHT_BIN2_GPIO, GPIO.HIGH if bin2 else GPIO.LOW)
+
+    def forward(self, speed_pct: int = None):
+        if speed_pct is not None:
+            self.set_speed(speed_pct)
+        with self._lock:
+            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
+            # Forward: IN1=H, IN2=L on both sides (logical)
+            self._set_dirs(left_in1=1, left_in2=0, right_in1=1, right_in2=0)
+            self._apply_speed_locked(self.speed_pct, self.speed_pct)
+
+    def back(self, speed_pct: int = None):
+        if speed_pct is not None:
+            self.set_speed(speed_pct)
+        with self._lock:
+            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
+            # Backward: IN1=L, IN2=H on both sides (logical)
+            self._set_dirs(left_in1=0, left_in2=1, right_in1=0, right_in2=1)
+            self._apply_speed_locked(self.speed_pct, self.speed_pct)
+
+    def left(self, speed_pct: int = None):
+        """
+        Turn left in-place: left backward, right forward (logical).
+        """
+        if speed_pct is not None:
+            self.set_speed(speed_pct)
+        with self._lock:
+            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
+            self._set_dirs(left_in1=0, left_in2=1, right_in1=1, right_in2=0)
+            self._apply_speed_locked(self.speed_pct, self.speed_pct)
+
+    def right(self, speed_pct: int = None):
+        """
+        Turn right in-place: left forward, right backward (logical).
+        """
+        if speed_pct is not None:
+            self.set_speed(speed_pct)
+        with self._lock:
+            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
+            self._set_dirs(left_in1=1, left_in2=0, right_in1=0, right_in2=1)
+            self._apply_speed_locked(self.speed_pct, self.speed_pct)
 
     def coast(self):
         with self._lock:
@@ -156,50 +239,6 @@ class Motors:
             self.brake()
         else:
             self.coast()
-
-    def forward(self, speed_pct: int = None):
-        if speed_pct is not None:
-            self.set_speed(speed_pct)
-        with self._lock:
-            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
-            GPIO.output(config.LEFT_AIN1_GPIO, GPIO.LOW)
-            GPIO.output(config.LEFT_AIN2_GPIO, GPIO.HIGH)
-            GPIO.output(config.RIGHT_BIN1_GPIO, GPIO.HIGH)
-            GPIO.output(config.RIGHT_BIN2_GPIO, GPIO.LOW)
-            self._apply_speed_locked(self.speed_pct, self.speed_pct)
-
-    def back(self, speed_pct: int = None):
-        if speed_pct is not None:
-            self.set_speed(speed_pct)
-        with self._lock:
-            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
-            GPIO.output(config.LEFT_AIN1_GPIO, GPIO.LOW)
-            GPIO.output(config.LEFT_AIN2_GPIO, GPIO.HIGH)
-            GPIO.output(config.RIGHT_BIN1_GPIO, GPIO.HIGH)
-            GPIO.output(config.RIGHT_BIN2_GPIO, GPIO.LOW)
-            self._apply_speed_locked(self.speed_pct, self.speed_pct)
-
-    def left(self, speed_pct: int = None):
-        if speed_pct is not None:
-            self.set_speed(speed_pct)
-        with self._lock:
-            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
-            GPIO.output(config.LEFT_AIN1_GPIO, GPIO.LOW)
-            GPIO.output(config.LEFT_AIN2_GPIO, GPIO.HIGH)
-            GPIO.output(config.RIGHT_BIN1_GPIO, GPIO.LOW)
-            GPIO.output(config.RIGHT_BIN2_GPIO, GPIO.HIGH)
-            self._apply_speed_locked(self.speed_pct, self.speed_pct)
-
-    def right(self, speed_pct: int = None):
-        if speed_pct is not None:
-            self.set_speed(speed_pct)
-        with self._lock:
-            GPIO.output(config.TB6612_STBY_GPIO, GPIO.HIGH)
-            GPIO.output(config.LEFT_AIN1_GPIO, GPIO.HIGH)
-            GPIO.output(config.LEFT_AIN2_GPIO, GPIO.LOW)
-            GPIO.output(config.RIGHT_BIN1_GPIO, GPIO.HIGH)
-            GPIO.output(config.RIGHT_BIN2_GPIO, GPIO.LOW)
-            self._apply_speed_locked(self.speed_pct, self.speed_pct)
 
     def cleanup(self):
         try:
